@@ -10,7 +10,7 @@ index 88e22811..c2552bd9 100644
 +menu "KernelSU - SUSFS"
 +
 +config KSU_SUSFS
-+	bool "KernelSU addon - SUSFS"
++	bool "KernelSU addon - SUSFS support"
 +	depends on KSU
 +	depends on THREAD_INFO_IN_TASK
 +	default y

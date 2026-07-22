@@ -2,11 +2,13 @@ diff --git a/kernel/Kconfig b/kernel/Kconfig
 index 88e22811..c2552bd9 100644
 --- a/kernel/Kconfig
 +++ b/kernel/Kconfig
-@@ -42,5 +42,57 @@ config KSU_X86_PATCH_SYSCALL_DISPATCHER
+@@ -42,5 +42,58 @@ config KSU_X86_PATCH_SYSCALL_DISPATCHER
  	help
  	  Dynamically patch x64's hardened syscall dispatcher to support syscall hooks. This is a
  	  replacement for a kernel source code patch, and is useful for x86_64 LKM mode.
++
 +menu "KernelSU - SUSFS"
++
 +config KSU_SUSFS
 +	bool "KernelSU addon - SUSFS"
 +	depends on KSU
@@ -57,6 +59,7 @@ index 88e22811..c2552bd9 100644
 +	bool "Enable to hide mmapped real files from proc maps interfaces"
 +	depends on KSU_SUSFS
 +	default y
++
 +endmenu
  
  endmenu
@@ -64,45 +67,47 @@ diff --git a/kernel/core/init.c b/kernel/core/init.c
 index 09b290a9..3ad23b85 100644
 --- a/kernel/core/init.c
 +++ b/kernel/core/init.c
-@@ -6,6 +6,9 @@
+@@ -6,6 +6,10 @@
  #include <linux/sched.h>
  #include <linux/workqueue.h>
  #include <linux/moduleparam.h>
++
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs.h>
 +#endif
  
  #include "policy/allowlist.h"
  #include "policy/app_profile.h"
-@@ -182,6 +185,10 @@ int __init kernelsu_init(void)
+@@ -182,6 +186,10 @@ int __init kernelsu_init(void)
  #ifndef CONFIG_KSU_DEBUG
      kobject_del(&THIS_MODULE->mkobj.kobj);
  #endif
-+#endif
 +
 +#ifdef CONFIG_KSU_SUSFS
 +    susfs_init();
- #endif
++#endif
      return 0;
  }
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
 index d3f3ac49..45486073 100644
 --- a/kernel/hook/setuid_hook.c
 +++ b/kernel/hook/setuid_hook.c
-@@ -11,6 +11,9 @@
+@@ -11,6 +11,10 @@
  #include <linux/types.h>
  #include <linux/uaccess.h>
  #include <linux/uidgid.h>
++
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs.h>
 +#endif
  
  #include "policy/allowlist.h"
  #include "hook/setuid_hook.h"
-@@ -51,6 +54,10 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
+@@ -51,6 +55,11 @@ int ksu_handle_setresuid(uid_t old_uid, uid_t new_uid)
  
      // Handle kernel umount
      ksu_handle_umount(old_uid, new_uid);
++
 +#ifdef CONFIG_KSU_SUSFS_SUS_MOUNT
 +    // Mark this proc so susfs hides sus mounts/paths/kstat from it
 +    susfs_set_current_proc_umounted();
@@ -114,17 +119,18 @@ diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
 index dddb9128..c41d9884 100644
 --- a/kernel/supercall/supercall.c
 +++ b/kernel/supercall/supercall.c
-@@ -12,6 +12,9 @@
+@@ -12,6 +12,10 @@
  #include <linux/version.h>
  
  #include <linux/utsname.h> // utsname() and uts_sem
++
 +#ifdef CONFIG_KSU_SUSFS
 +#include <linux/susfs.h>
 +#endif
  
  #include "uapi/supercall.h"
  #include "supercall/internal.h"
-@@ -93,6 +96,44 @@ static int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void
+@@ -93,6 +97,44 @@ static int ksu_handle_sys_reboot(int magic1, int magic2, unsigned int cmd, void
      if (magic1 != KSU_INSTALL_MAGIC1)
      	return 0;
  
@@ -164,7 +170,7 @@ index dddb9128..c41d9884 100644
 +        if (cmd == CMD_SUSFS_SHOW_VERSION) { susfs_show_version(arg); return 0; }
 +        return 0;
 +    }
-+#endif // CONFIG_KSU_SUSFS
++#endif /* CONFIG_KSU_SUSFS */
 +
      pr_info("sys_reboot: intercepted call! magic: 0x%x id: %d\n", magic1, magic2);
  

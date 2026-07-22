@@ -1019,42 +1019,74 @@ runs:
         echo "✅ KernelSU (KOWX712) added (commit: ${KSU_COMMIT_SHA:0:8})"
         echo "::endgroup::"
 
-    - name: Apply SUSFS Patches (KOWX712 / manual-hook)
+    - name: Apply SUSFS Patches (KOWX712 / tracepoint-native)
       shell: bash
       if: ${{ env.OP_SUSFS == 'true' }}
-      env:
-        ANDROID_VER_LOCAL: ${{ env.ANDROID_VER }}
-        KERNEL_VER_LOCAL: ${{ env.KERNEL_VER }}
       run: |
         set -euo pipefail
-        echo "::group::Apply SUSFS (KOWX712 manual-hook)"
+        echo "::group::Apply SUSFS (KOWX712 tracepoint-native)"
         # ----------------------------------------------------------------------------
-        # KOWX712 does NOT use SukiSU's apply_susfs_patches.sh fixer. KOWX (=backslashxx)
-        # integrates SUSFS via PURE MANUAL HOOKS, not its native tracepoint/kprobe
-        # dispatcher. The intended flow (all patches live under kernel_patches/kowx/):
-        #   KSU-side (in $KERNEL_PLATFORM_FOLDER/KernelSU):
-        #     - 32441_10_enable_susfs_for_ksu.patch  (rebased onto the pinned KOWX commit;
-        #       strips tp_marker/syscall_hook_manager/syscall_event_bridge/lsm_hook +
-        #       arm64/x86 syscall_hook objs -> manual-hook mode, wires SUSFS handlers)
-        #   kernel-side (in $COMMON_KERNEL_FOLDER):
-        #     - 50_add_susfs_in_gki-<ANDROID_VER>-<KERNEL_VER>.patch  (VFS SUSFS core;
-        #       fetched from susfs4ksu like before, or vendored under kowx/)
-        #     - 69_pure_manual_hooks_only.patch      (manual hook call sites in
-        #       fs/exec.c, fs/open.c, fs/stat.c, kernel/reboot.c)
-        #     - copy susfs4ksu kernel_patches/fs/* and include/linux/* into the tree
-        # NEED_HOOKS stays false (manual hooks come from 69, not scope_min_manual_hooks).
+        # KOWX712 @ pinned commit uses a TRACEPOINT dispatcher hook model (NOT manual
+        # hooks). SUSFS hiding is VFS-level (fs/susfs.c) and hook-model-independent, so
+        # we add it WITHOUT the 32441/69 manual-hook port. Flow:
+        #   kernel-side ($COMMON_KERNEL_FOLDER):
+        #     - copy susfs4ksu kernel_patches/fs/* + include/linux/*
+        #     - apply 50_add_susfs_in_<branch>.patch  (VFS SUSFS core)
+        #   KSU-side ($KERNEL_PLATFORM_FOLDER/KernelSU):
+        #     - apply configs/kowx/susfs_enable_kowx.patch  (additive: Kconfig +
+        #       susfs_init() + SUSFS_MAGIC cmd switch injected into the existing
+        #       supercall.c ksu_handle_sys_reboot + umount marking in setuid_hook.c).
+        #       Keeps KOWX's native tracepoint hooks AND all manager commands intact.
+        # NEED_HOOKS stays false (no manual/scope_min hooks).
+        # NOTE: some kernel versions may need per-version fixups for 50_add_susfs (e.g.
+        # android15-6.6 task_mmu nr_subpages); port from OnePlus_KOWX_KSU_SUSFS if a
+        # version rejects. android16-6.12 (OP15) is the primary target.
         # ----------------------------------------------------------------------------
-        KOWX_PATCHES="$KERNEL_PATCHES_FOLDER/kowx"
-        ENABLE_PATCH="$KOWX_PATCHES/32441_10_enable_susfs_for_ksu.patch"
-        if [ ! -f "$ENABLE_PATCH" ]; then
-          echo "::error::KOWX712 manual-hook SUSFS integration is not wired yet."
-          echo "::error::Missing $ENABLE_PATCH — rebase 32441 onto the pinned KOWX commit"
-          echo "::error::and add per-version 50_add_susfs + 69_pure_manual_hooks under kowx/."
-          echo "::error::Until then, run KOWX712 builds with susfs=false."
-          exit 1
-        fi
-        echo "::error::TODO: wire KOWX712 manual-hook SUSFS apply steps here."
-        exit 1
+        [ -n "${SUSFS_FOLDER:-}" ] && [ -d "$SUSFS_FOLDER/kernel_patches" ] || { echo "::error::SUSFS_FOLDER not fetched (see 'Fetch SusFS' step)"; exit 1; }
+
+        # 1) copy susfs core sources into the common kernel tree
+        cp "$SUSFS_FOLDER/kernel_patches/fs/"* "$COMMON_KERNEL_FOLDER/fs/"
+        cp "$SUSFS_FOLDER/kernel_patches/include/linux/"* "$COMMON_KERNEL_FOLDER/include/linux/"
+
+        susfs_version=$(grep '#define SUSFS_VERSION' "$COMMON_KERNEL_FOLDER/include/linux/susfs.h" | awk -F'"' '{print $2}')
+        echo "SUSVER=$susfs_version" >> "$GITHUB_ENV"
+        echo "SusFS Version: $susfs_version"
+        echo "$susfs_version" >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
+
+        # 2) kernel-side VFS patch (one 50_add_susfs per susfs branch)
+        cd "$COMMON_KERNEL_FOLDER"
+        ADD_SUSFS="$(ls "$SUSFS_FOLDER"/kernel_patches/50_add_susfs_in_*.patch 2>/dev/null | head -n1)"
+        [ -n "$ADD_SUSFS" ] || { echo "::error::50_add_susfs patch not found under $SUSFS_FOLDER/kernel_patches"; exit 1; }
+        echo "Applying $(basename "$ADD_SUSFS")"
+        patch -p1 --fuzz=3 --no-backup-if-mismatch < "$ADD_SUSFS"
+
+        # 3) KOWX712 KSU-side additive integration (tracepoint-native)
+        KOWX_ENABLE="$GITHUB_WORKSPACE/configs/kowx/susfs_enable_kowx.patch"
+        [ -f "$KOWX_ENABLE" ] || { echo "::error::missing $KOWX_ENABLE"; exit 1; }
+        cd "$KERNEL_PLATFORM_FOLDER/KernelSU"
+        echo "Applying KOWX712 SUSFS enable patch"
+        patch -p1 --fuzz=3 --no-backup-if-mismatch < "$KOWX_ENABLE"
+
+        # 4) defconfig (SPOOF_UNAME off by default; SUS_MAP etc. on)
+        DEFCONFIG="$COMMON_KERNEL_FOLDER/arch/arm64/configs/gki_defconfig"
+        sed -i '/^CONFIG_KSU_SUSFS/d' "$DEFCONFIG" || true
+        {
+          echo 'CONFIG_KSU_SUSFS=y'
+          echo 'CONFIG_KSU_SUSFS_SUS_PATH=y'
+          echo 'CONFIG_KSU_SUSFS_SUS_MOUNT=y'
+          echo 'CONFIG_KSU_SUSFS_SUS_KSTAT=y'
+          echo 'CONFIG_KSU_SUSFS_SPOOF_UNAME=n'
+          echo 'CONFIG_KSU_SUSFS_ENABLE_LOG=y'
+          echo 'CONFIG_KSU_SUSFS_HIDE_KSU_SUSFS_SYMBOLS=y'
+          echo 'CONFIG_KSU_SUSFS_SPOOF_CMDLINE_OR_BOOTCONFIG=y'
+          echo 'CONFIG_KSU_SUSFS_OPEN_REDIRECT=y'
+          echo 'CONFIG_KSU_SUSFS_SUS_MAP=y'
+        } >> "$DEFCONFIG"
+
+        echo "NEED_HOOKS=false" >> "$GITHUB_ENV"
+        echo "SUSFS_PATCH_APPLIED=true" >> "$GITHUB_ENV"
+        echo "✅ SUSFS (KOWX712 tracepoint-native) applied: $susfs_version"
+        echo "::endgroup::"
     
     - name: Add BBG
       if: ${{ env.OP_BBG == 'true' }}

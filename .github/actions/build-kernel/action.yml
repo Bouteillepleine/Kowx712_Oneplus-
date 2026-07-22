@@ -1072,8 +1072,48 @@ runs:
         cd "$COMMON_KERNEL_FOLDER"
         ADD_SUSFS="$(ls "$SUSFS_FOLDER"/kernel_patches/50_add_susfs_in_*.patch 2>/dev/null | head -n1)"
         [ -n "$ADD_SUSFS" ] || { echo "::error::50_add_susfs patch not found under $SUSFS_FOLDER/kernel_patches"; exit 1; }
+        # android15-6.6 fake-patch prep: some 6.6 trees (6.6.30 sub-branch, mt6833/N30-SE) dropped
+        # context that 50_add_susfs's fs/namespace.c + fs/proc/task_mmu.c hunks need, so they reject.
+        # Add the missing context first (idempotent), then revert the temporary parts after apply.
+        # Ported verbatim from OnePlus_KOWX_KSU_SUSFS.
+        fake_patched=0
+        fake_patched_expand=0
+        if [ "${{ env.ANDROID_VER }}" = "android15" ] && [ "${{ env.KERNEL_VER }}" = "6.6" ]; then
+          if ! grep -qxF '#include <trace/hooks/fs.h>' ./fs/namespace.c; then
+            sed -i '/#include <trace\/hooks\/blk.h>/a #include <trace\/hooks\/fs.h>' ./fs/namespace.c
+          fi
+          if ! grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
+            echo "nr_subpages Line not found. Fake Patching!"
+            sed -i -e '/int ret = 0, copied = 0;/a \\tunsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;' -e '/int ret = 0, copied = 0;/a \\tpagemap_entry_t \*res = NULL;' ./fs/proc/task_mmu.c
+            fake_patched=1
+          fi
+          if ! grep -qxF '#include <linux/dma-buf.h>' ./fs/proc/base.c; then
+            sed -i '/#include <linux\/cpufreq_times.h>/a #include <linux\/dma-buf.h>' ./fs/proc/base.c
+          fi
+          if ! grep -qxF '#include <linux/zswap.h>' ./mm/memory.c; then
+            sed -i '/#include <linux\/sched\/sysctl.h>/a #include <linux\/zswap.h>' ./mm/memory.c
+          fi
+          if grep -qF 'if (vma->vm_end > last_vma_end)' ./fs/proc/task_mmu.c && ! grep -qxF 'SUSFS_IS_INODE_SUS_MAP' ./fs/proc/task_mmu.c; then
+            perl -i -0pe 's/\t\t\tif \(vma->vm_end > last_vma_end\)\n\t\t\t\tsmap_gather_stats\(vma, &mss, last_vma_end\);/\t\t\tif (vma->vm_end > last_vma_end) {\n\t\t\t\tsmap_gather_stats(vma, \&mss, last_vma_end);\n\t\t\t\tlast_vma_end = vma->vm_end;\n\t\t\t}/' ./fs/proc/task_mmu.c
+            fake_patched_expand=1
+          fi
+        fi
+
         echo "Applying $(basename "$ADD_SUSFS")"
         patch -p1 --fuzz=3 --no-backup-if-mismatch < "$ADD_SUSFS"
+
+        # revert the temporary fake-patch parts (permanent includes stay)
+        if [ "$fake_patched_expand" = 1 ]; then
+          if grep -qF 'if (vma->vm_end > last_vma_end) {' ./fs/proc/task_mmu.c && ! grep -qxF 'SUSFS_IS_INODE_SUS_MAP' ./fs/proc/task_mmu.c; then
+            perl -i -0pe 's/\t\t\tif \(vma->vm_end > last_vma_end\) \{\n\t\t\t\tsmap_gather_stats\(vma, &mss, last_vma_end\);\n\t\t\t\tlast_vma_end = vma->vm_end;\n\t\t\t\}/\t\t\tif (vma->vm_end > last_vma_end)\n\t\t\t\tsmap_gather_stats(vma, \&mss, last_vma_end);/' ./fs/proc/task_mmu.c
+          fi
+        fi
+        if [ "$fake_patched" = 1 ]; then
+          if grep -qxF $'\tunsigned int nr_subpages = __PAGE_SIZE / PAGE_SIZE;' ./fs/proc/task_mmu.c; then
+            echo "nr_subpages Line found. Revert Fake Patching!"
+            sed -i -e '/unsigned int nr_subpages \= __PAGE_SIZE \/ PAGE_SIZE;/d' -e '/pagemap_entry_t \*res = NULL;/d' ./fs/proc/task_mmu.c
+          fi
+        fi
 
         # 3) KOWX712 KSU-side additive integration (tracepoint-native)
         KOWX_ENABLE="$GITHUB_WORKSPACE/configs/kowx/susfs_enable_kowx.patch"

@@ -49,7 +49,7 @@ on:
         description: 'Enter KernelSU build json (KOWX712 fork). The "ksu" hash is pinned (not "master") so the SUSFS manual-hook enable patch stays valid; bump it together with a re-rebased 32441 patch.'
         required: true
         type: string
-        default: '[{"type":"KSU","hash":"60e7841b5ce1d0dc5aafd4d4898cd5dccacb270f"}]'
+        default: '[{"type":"KSU","hash":"master"}]'
       optimize_level:
         description: "Compiler optimization level"
         required: true

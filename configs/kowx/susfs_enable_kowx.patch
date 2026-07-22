@@ -2,7 +2,7 @@ diff --git a/kernel/Kconfig b/kernel/Kconfig
 index 88e22811..c2552bd9 100644
 --- a/kernel/Kconfig
 +++ b/kernel/Kconfig
-@@ -42,5 +42,58 @@ config KSU_X86_PATCH_SYSCALL_DISPATCHER
+@@ -42,5 +42,60 @@ config KSU_X86_PATCH_SYSCALL_DISPATCHER
  	help
  	  Dynamically patch x64's hardened syscall dispatcher to support syscall hooks. This is a
  	  replacement for a kernel source code patch, and is useful for x86_64 LKM mode.
@@ -78,7 +78,7 @@ index 09b290a9..3ad23b85 100644
  
  #include "policy/allowlist.h"
  #include "policy/app_profile.h"
-@@ -182,6 +186,10 @@ int __init kernelsu_init(void)
+@@ -182,5 +186,9 @@ int __init kernelsu_init(void)
  #ifndef CONFIG_KSU_DEBUG
      kobject_del(&THIS_MODULE->mkobj.kobj);
  #endif

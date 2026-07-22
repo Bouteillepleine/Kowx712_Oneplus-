@@ -228,11 +228,11 @@ jobs:
             }
 
             function classifyCache(key) {
-              if (/^SUKISU-v\d+-LTO-/i.test(key) || key.includes('-LTO-')) {
+              if (/^KSU-v\d+-LTO-/i.test(key) || key.includes('-LTO-')) {
                 return 'lto';
               }
 
-              if (/^SUKISU-v\d+-/i.test(key)) {
+              if (/^KSU-v\d+-/i.test(key)) {
                 return 'ccache';
               }
 
@@ -257,10 +257,10 @@ jobs:
 
             function extractDeviceFromKey(key) {
               // Expected examples:
-              // SUKISU-v3-OP12-OOS16-android15-6.6-...
-              // SUKISU-v3-LTO-OP12-OOS16-android15-6.6-...
-              let normalized = key.replace(/^SUKISU-v\d+-LTO-/i, '');
-              normalized = normalized.replace(/^SUKISU-v\d+-/i, '');
+              // KSU-v3-OP12-OOS16-android15-6.6-...
+              // KSU-v3-LTO-OP12-OOS16-android15-6.6-...
+              let normalized = key.replace(/^KSU-v\d+-LTO-/i, '');
+              normalized = normalized.replace(/^KSU-v\d+-/i, '');
 
               const parts = normalized.split('-');
 
@@ -552,11 +552,11 @@ jobs:
             }
 
             function classifyCache(key) {
-              if (/^SUKISU-v\d+-LTO-/i.test(key) || key.includes('-LTO-')) {
+              if (/^KSU-v\d+-LTO-/i.test(key) || key.includes('-LTO-')) {
                 return 'lto';
               }
 
-              if (/^SUKISU-v\d+-/i.test(key)) {
+              if (/^KSU-v\d+-/i.test(key)) {
                 return 'ccache';
               }
 
@@ -1052,11 +1052,11 @@ jobs:
             }
 
             function classifyCache(key) {
-              if (/^SUKISU-v\d+-LTO-/i.test(key) || key.includes('-LTO-')) {
+              if (/^KSU-v\d+-LTO-/i.test(key) || key.includes('-LTO-')) {
                 return 'lto';
               }
 
-              if (/^SUKISU-v\d+-/i.test(key)) {
+              if (/^KSU-v\d+-/i.test(key)) {
                 return 'ccache';
               }
 
@@ -1080,8 +1080,8 @@ jobs:
             }
 
             function extractDeviceFromKey(key) {
-              let normalized = key.replace(/^SUKISU-v\d+-LTO-/i, '');
-              normalized = normalized.replace(/^SUKISU-v\d+-/i, '');
+              let normalized = key.replace(/^KSU-v\d+-LTO-/i, '');
+              normalized = normalized.replace(/^KSU-v\d+-/i, '');
 
               const parts = normalized.split('-');
               const oosIndex = parts.findIndex(p => /^OOS\d+$/i.test(p));

@@ -1,4 +1,4 @@
-name: 'Build OnePlus Kernel with SukiSU'
+name: 'Build OnePlus Kernel with KernelSU (KOWX712)'
 
 inputs:
   op_config_json:
@@ -10,7 +10,7 @@ inputs:
     required: true
     type: choice
     options:
-      - SUKISU
+      - KSU
   ksu_branch_or_hash:
     description: 'KSU branch or commit hash (empty = auto-detect by ksu_type)'
     required: false
@@ -55,10 +55,10 @@ outputs:
     description: 'Full kernel version string'
     value: ${{ steps.save_metadata.outputs.kernel_version }}
   ksu_version:
-    description: 'SukiSU version number'
+    description: 'KernelSU (KOWX712) version number'
     value: ${{ steps.save_metadata.outputs.ksu_version }}
   ksu_type:
-    description: 'SukiSU Variant'
+    description: 'KernelSU variant'
     value: ${{ steps.save_metadata.outputs.ksu_type }}
   susfs_version:
     description: 'SUSFS version string'
@@ -123,12 +123,12 @@ runs:
       run: |
         set -euo pipefail
 
-        if [ "${{ inputs.ksu_type }}" != "SUKISU" ]; then
-          echo "::error::This action only supports SUKISU/SukiSU. Got: ${{ inputs.ksu_type }}"
+        if [ "${{ inputs.ksu_type }}" != "KSU" ]; then
+          echo "::error::This action only supports KSU (KOWX712/KernelSU). Got: ${{ inputs.ksu_type }}"
           exit 1
         fi
 
-        echo "✅ KSU type validated: ${{ inputs.ksu_type }}"
+        echo "✅ KSU type validated: ${{ inputs.ksu_type }} (KOWX712/KernelSU)"
 
     - name: Validate Inputs
       shell: bash
@@ -911,52 +911,59 @@ runs:
         sed -i 's/protected_modules = \[.*\]/protected_modules = []/' common/modules.bzl || true
         echo "::endgroup::"
 
-    - name: Add SukiSU
+    - name: Add KernelSU (KOWX712)
       shell: bash
-      if: ${{ inputs.ksu_type == 'SUKISU' }}
+      if: ${{ inputs.ksu_type == 'KSU' }}
       run: |
         set -euo pipefail
-        echo "::group::Add SukiSU"
+        echo "::group::Add KernelSU (KOWX712)"
 
+        # KOWX712/KernelSU is a fork of backslashxx/KernelSU (kernel driver is the
+        # backslashxx variant; only the manager APK is re-themed). setup.sh has the
+        # same interface as tiann/KernelSU and creates the KernelSU/ dir. The version
+        # is auto-computed in kernel/Kbuild (30000 + git commit count) via -DKSU_VERSION,
+        # so the tiann-era Makefile DKSU_VERSION sed below is a harmless no-op.
         cd "$KERNEL_PLATFORM_FOLDER"
 
-        SUKISU_SETUP_SCRIPT="$(mktemp /tmp/rsksu_setup_XXXXXX.sh)"
-        trap 'rm -f "$SUKISU_SETUP_SCRIPT"' EXIT
+        KSU_SETUP_SCRIPT="$(mktemp /tmp/kowx_setup_XXXXXX.sh)"
+        trap 'rm -f "$KSU_SETUP_SCRIPT"' EXIT
 
-        echo "Downloading SukiSU setup script..."
+        echo "Downloading KOWX712 setup script..."
         if ! curl --fail --location --proto '=https' --tlsv1.2 -LSs \
           --retry 5 --retry-delay 5 --retry-all-errors \
-          "https://raw.githubusercontent.com/SukiSU-Ultra/SukiSU-Ultra/main/kernel/setup.sh" \
-          -o "$SUKISU_SETUP_SCRIPT"; then
-          echo "::error::Failed to download SukiSU setup.sh after retries"
+          "https://raw.githubusercontent.com/KOWX712/KernelSU/master/kernel/setup.sh" \
+          -o "$KSU_SETUP_SCRIPT"; then
+          echo "::error::Failed to download KOWX712 setup.sh after retries"
           exit 1
         fi
 
-        SCRIPT_SIZE="$(stat -c%s "$SUKISU_SETUP_SCRIPT")"
+        SCRIPT_SIZE="$(stat -c%s "$KSU_SETUP_SCRIPT")"
         if [ "$SCRIPT_SIZE" -lt 512 ]; then
           echo "::error::Downloaded setup.sh is suspiciously small (${SCRIPT_SIZE} bytes). Aborting."
           exit 1
         fi
 
-        if ! head -n1 "$SUKISU_SETUP_SCRIPT" | grep -q '^#!'; then
+        if ! head -n1 "$KSU_SETUP_SCRIPT" | grep -q '^#!'; then
           echo "::error::Downloaded setup.sh does not start with a shebang. Aborting."
           exit 1
         fi
 
-        chmod +x "$SUKISU_SETUP_SCRIPT"
+        chmod +x "$KSU_SETUP_SCRIPT"
 
+        # KOWX712's default branch is 'master' (not 'main'). The builder pins the hash
+        # (see ksu_options in build-kernel-release.yml) so the SUSFS enable patch stays valid.
         KSU_INPUT="${{ inputs.ksu_branch_or_hash }}"
         if [ -z "$KSU_INPUT" ]; then
-          echo "No branch/hash provided — using default installer mode."
-          bash "$SUKISU_SETUP_SCRIPT"
+          echo "No branch/hash provided — using default installer mode (master)."
+          bash "$KSU_SETUP_SCRIPT"
         else
-          echo "Using SukiSU branch/hash: $KSU_INPUT"
-          bash "$SUKISU_SETUP_SCRIPT" "$KSU_INPUT"
+          echo "Using KOWX712 branch/hash: $KSU_INPUT"
+          bash "$KSU_SETUP_SCRIPT" "$KSU_INPUT"
         fi
 
         if [ ! -d "$KERNEL_PLATFORM_FOLDER/KernelSU" ]; then
-          echo "::error::KernelSU directory was not created by SukiSU setup."
-          find "$KERNEL_PLATFORM_FOLDER" -maxdepth 3 -type d \( -iname "*ksu*" -o -iname "*suki*" \) || true
+          echo "::error::KernelSU directory was not created by KOWX712 setup."
+          find "$KERNEL_PLATFORM_FOLDER" -maxdepth 3 -type d -iname "*ksu*" || true
           exit 1
         fi
 
@@ -969,24 +976,23 @@ runs:
           COMMITS_COUNT=30000
         fi
 
-        BASE_VERSION=37185
+        # KOWX712/backslashxx version base is 30000 (matches kernel/Kbuild's own formula).
+        BASE_VERSION=30000
         KSU_VERSION=$((COMMITS_COUNT + BASE_VERSION))
 
-        echo "SukiSU commits: $COMMITS_COUNT"
-        echo "SukiSU version: $KSU_VERSION"
-        echo "SukiSU commit:  $KSU_COMMIT_SHA"
+        echo "KOWX712 commits: $COMMITS_COUNT"
+        echo "KOWX712 version: $KSU_VERSION"
+        echo "KOWX712 commit:  $KSU_COMMIT_SHA"
 
-        # SukiSU Ultra reports its version via DKSU_VERSION in kernel/Makefile.
+        # Harmless no-op on the backslashxx Makefile (version comes from Kbuild); kept for
+        # parity with tiann-style trees that do read DKSU_VERSION from the Makefile.
         if [ -f "$KERNEL_PLATFORM_FOLDER/KernelSU/kernel/Makefile" ]; then
           sed -i "s/DKSU_VERSION=[0-9]*/DKSU_VERSION=${KSU_VERSION}/" "$KERNEL_PLATFORM_FOLDER/KernelSU/kernel/Makefile" || true
         fi
 
-        # Brand the manager's "Kernel full version" string. SukiSU-Ultra does NOT read
-        # CONFIG_KSU_FULL_NAME_FORMAT (it's referenced nowhere in the source); the shown
-        # string is KSU_VERSION_FULL, built in kernel/Kbuild as v<tag>-<sha>@<branch>
-        # (@HEAD when pinned to a tag / detached checkout). Override it to a fixed brand.
+        # Brand the manager's "Kernel full version" string (KSU_VERSION_FULL in Kbuild).
         if [ -f "$KERNEL_PLATFORM_FOLDER/KernelSU/kernel/Kbuild" ]; then
-          sed -i 's#^KSU_VERSION_FULL :=.*#KSU_VERSION_FULL := v$(VERSION_TAG)-⚡Ultra⚡@SukiSU#' "$KERNEL_PLATFORM_FOLDER/KernelSU/kernel/Kbuild" || true
+          sed -i 's#^KSU_VERSION_FULL :=.*#KSU_VERSION_FULL := v$(VERSION_TAG)-@KOWX712#' "$KERNEL_PLATFORM_FOLDER/KernelSU/kernel/Kbuild" || true
         fi
 
         {
@@ -1000,32 +1006,20 @@ runs:
         mkdir -p "$(dirname "$DEFCONFIG")"
         touch "$DEFCONFIG"
 
-        TAG_NAME="$(git -C KernelSU describe --tags --abbrev=0 2>/dev/null || echo v1.0.0)"
-
-        sed -i \
-          -e '/^CONFIG_KSU=/d' \
-          -e '/^CONFIG_KPM=/d' \
-          -e '/^CONFIG_KSU_MULTI_MANAGER_SUPPORT=/d' \
-          -e '/^CONFIG_KSU_FULL_NAME_FORMAT=/d' \
-          "$DEFCONFIG" || true
+        # KOWX712 has no CONFIG_KPM / CONFIG_KSU_MULTI_MANAGER_SUPPORT / CONFIG_KSU_FULL_NAME_FORMAT
+        # (those are SukiSU-Ultra). Manual-hook + SUSFS config is added by the SUSFS step.
+        sed -i -e '/^CONFIG_KSU=/d' "$DEFCONFIG" || true
+        printf '%s\n' 'CONFIG_KSU=y' >> "$DEFCONFIG"
 
         {
-          printf '%s\n' 'CONFIG_KSU=y'
-          printf '%s\n' 'CONFIG_KPM=n'
-          printf '%s\n' 'CONFIG_KSU_MULTI_MANAGER_SUPPORT=y'
-          # (CONFIG_KSU_FULL_NAME_FORMAT dropped — SukiSU-Ultra ignores it; the version
-          #  string is branded via KSU_VERSION_FULL in the Kbuild above.)
-        } >> "$DEFCONFIG"
-
-        {
-          echo "SUKISU"
+          echo "KSU"
           echo "$KSU_VERSION"
         } >> "${ARTIFACTS_FOLDER}/${OP_MODEL}_${OP_OS_VERSION}.txt"
 
-        echo "✅ SukiSU added (commit: ${KSU_COMMIT_SHA:0:8})"
+        echo "✅ KernelSU (KOWX712) added (commit: ${KSU_COMMIT_SHA:0:8})"
         echo "::endgroup::"
 
-    - name: Apply SUSFS Patches (SukiSU)
+    - name: Apply SUSFS Patches (KOWX712 / manual-hook)
       shell: bash
       if: ${{ env.OP_SUSFS == 'true' }}
       env:
@@ -1033,18 +1027,34 @@ runs:
         KERNEL_VER_LOCAL: ${{ env.KERNEL_VER }}
       run: |
         set -euo pipefail
-        # Full SukiSU-side SUSFS integration via configs/apply_susfs_patches.sh:
-        # applies the KernelSU-side 10_enable_susfs_for_ksu patch + fix_sukisu_*
-        # reconciliation AND the kernel-side 50_add_susfs patch + defconfig. This
-        # replaces the previous inline apply, which only handled the kernel-side
-        # patch (fine for a susfs-native manager, insufficient for the SukiSU Ultra
-        # manager, which needs manager-side wiring). The script sets SUSVER and
-        # NEED_HOOKS=false in GITHUB_ENV.
-        SCRIPT="$GITHUB_WORKSPACE/configs/apply_susfs_patches.sh"
-        [ -f "$SCRIPT" ] || { echo "::error::SUSFS apply script not found: $SCRIPT"; exit 1; }
-        chmod +x "$SCRIPT"
-        bash "$SCRIPT"
-        echo "SUSFS_PATCH_APPLIED=true" >> "$GITHUB_ENV"
+        echo "::group::Apply SUSFS (KOWX712 manual-hook)"
+        # ----------------------------------------------------------------------------
+        # KOWX712 does NOT use SukiSU's apply_susfs_patches.sh fixer. KOWX (=backslashxx)
+        # integrates SUSFS via PURE MANUAL HOOKS, not its native tracepoint/kprobe
+        # dispatcher. The intended flow (all patches live under kernel_patches/kowx/):
+        #   KSU-side (in $KERNEL_PLATFORM_FOLDER/KernelSU):
+        #     - 32441_10_enable_susfs_for_ksu.patch  (rebased onto the pinned KOWX commit;
+        #       strips tp_marker/syscall_hook_manager/syscall_event_bridge/lsm_hook +
+        #       arm64/x86 syscall_hook objs -> manual-hook mode, wires SUSFS handlers)
+        #   kernel-side (in $COMMON_KERNEL_FOLDER):
+        #     - 50_add_susfs_in_gki-<ANDROID_VER>-<KERNEL_VER>.patch  (VFS SUSFS core;
+        #       fetched from susfs4ksu like before, or vendored under kowx/)
+        #     - 69_pure_manual_hooks_only.patch      (manual hook call sites in
+        #       fs/exec.c, fs/open.c, fs/stat.c, kernel/reboot.c)
+        #     - copy susfs4ksu kernel_patches/fs/* and include/linux/* into the tree
+        # NEED_HOOKS stays false (manual hooks come from 69, not scope_min_manual_hooks).
+        # ----------------------------------------------------------------------------
+        KOWX_PATCHES="$KERNEL_PATCHES_FOLDER/kowx"
+        ENABLE_PATCH="$KOWX_PATCHES/32441_10_enable_susfs_for_ksu.patch"
+        if [ ! -f "$ENABLE_PATCH" ]; then
+          echo "::error::KOWX712 manual-hook SUSFS integration is not wired yet."
+          echo "::error::Missing $ENABLE_PATCH — rebase 32441 onto the pinned KOWX commit"
+          echo "::error::and add per-version 50_add_susfs + 69_pure_manual_hooks under kowx/."
+          echo "::error::Until then, run KOWX712 builds with susfs=false."
+          exit 1
+        fi
+        echo "::error::TODO: wire KOWX712 manual-hook SUSFS apply steps here."
+        exit 1
     
     - name: Add BBG
       if: ${{ env.OP_BBG == 'true' }}
@@ -2204,8 +2214,8 @@ runs:
           echo "Kernel Uname: ${{ env.KERNEL_UNAME }}"
           echo "Build User: ${{ env.BUILD_USER }}"
           echo "Build Host: ${{ env.BUILD_HOST }}"
-          echo "SukiSU Version: ${KSUVER:-unknown}"
-          echo "SukiSU commit SHA: ${KSU_SHA:-unknown}"
+          echo "KernelSU (KOWX712) Version: ${KSUVER:-unknown}"
+          echo "KernelSU commit SHA: ${KSU_SHA:-unknown}"
           if [ "${{ env.OP_SUSFS }}" = true ]; then
             echo "SUSFS Version: ${SUSVER:-unknown}"
             echo "SUSFS commit SHA: $SUSFS_SHA"
@@ -2241,7 +2251,7 @@ runs:
         
         # One-line header so the collapsed block is scannable across 100+ devices
         SUM_HEAD="🎯 <b>${{ env.OP_MODEL }}</b> — ${{ steps.save_metadata.outputs.kernel_version }}"
-        SUM_HEAD="${SUM_HEAD} · ⚡SukiSU ${KSUVER:-?}"
+        SUM_HEAD="${SUM_HEAD} · KOWX712 ${KSUVER:-?}"
         if [ "${{ env.OP_SUSFS }}" = true ]; then SUM_HEAD="${SUM_HEAD} · SUSFS ${SUSVER:-?}"; fi
         SUM_HEAD="${SUM_HEAD} · ⏱ ${{ steps.collect_stats.outputs.build_time }}s"
         if [ "${{ steps.collect_stats.outputs.warnings_count }}" != "0" ]; then
@@ -2262,12 +2272,12 @@ runs:
           echo "| **Kernel Uname** | \`${{ env.KERNEL_UNAME }}\` |"
           echo "| **Build User** | ${{ env.BUILD_USER }} |"
           echo "| **Build Host** | ${{ env.BUILD_HOST }} |"
-          echo "| **SukiSU Version** | ${KSUVER:-unknown} |"
+          echo "| **KernelSU (KOWX712) Version** | ${KSUVER:-unknown} |"
           
           if [ "$KSU_SHA" != "unknown" ]; then
-            echo "| **SukiSU Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/SukiSU-Ultra/SukiSU-Ultra/commit/$KSU_SHA) |"
+            echo "| **KernelSU Commit** | [\`${KSU_SHA:0:8}\`](https://github.com/KOWX712/KernelSU/commit/$KSU_SHA) |"
           else
-            echo "| **SukiSU Commit** | unknown |"
+            echo "| **KernelSU Commit** | unknown |"
           fi
           
           if [ "${{ env.OP_SUSFS }}" = true ]; then
@@ -2474,7 +2484,7 @@ runs:
           rm -rf "$KERNEL_PATCHES_FOLDER" || true
         fi
 
-        rm -f /tmp/sukisu_setup_*.sh /tmp/bbg_setup_*.sh /tmp/clone_log_* || true
+        rm -f /tmp/kowx_setup_*.sh /tmp/bbg_setup_*.sh /tmp/clone_log_* || true
 
         echo ""
         echo "Disk usage after cleanup:"

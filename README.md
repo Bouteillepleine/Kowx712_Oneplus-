@@ -1,16 +1,16 @@
 <div align="center">
 
-# OnePlus 📦 SukiSU 📦 SUSFS
+# OnePlus 📦 KOWX712 📦 SUSFS
 
 ### Wild Fork
 
 </div>
 
-This repository provides GitHub Actions workflows to automatically build flashable AnyKernel3 ZIPs for multiple OnePlus devices with integrated **SukiSU** and **SUSFS** support.
+This repository provides GitHub Actions workflows to automatically build flashable AnyKernel3 ZIPs for multiple OnePlus devices with integrated **KOWX712** and **SUSFS** support.
 
 ## 🌟 Features
 
-- **SukiSU** - Kernel-level root solution
+- **KOWX712** - Kernel-level root solution
 - **SUSFS** - Super User File System support
 - **Baseband Guard LSM** - Optional extra security layer
 - **WireGuard** - Modern VPN support built into the kernel
@@ -35,7 +35,7 @@ configs/
 1. Download the latest kernel ZIP for your device from **Releases**.
 2. Flash the AnyKernel3 ZIP with **Kernel Flasher** or another compatible kernel flashing app.
 3. Reboot.
-4. Open **SukiSU Manager** and verify root.
+4. Open **KOWX712 Manager** and verify root.
 
 ## 🔧 Build Artifacts
 
@@ -54,10 +54,10 @@ Use GitHub Actions:
 Actions → Build and Release OnePlus Kernels → Run workflow
 ```
 
-Use SukiSU option:
+Use KOWX712 option:
 
 ```json
-[{"type":"SUKISU","hash":"main"}]
+[{"type":"KSU","hash":"main"}]
 ```
 
 ## 📋 Requirements
@@ -69,10 +69,10 @@ Use SukiSU option:
 
 ## 🔗 Links
 
-- [SukiSU](https://github.com/SukiSU-Ultra/SukiSU-Ultra)
+- [KOWX712](https://github.com/KOWX712/KernelSU)
 - [SUSFS](https://gitlab.com/simonpunk/susfs4ksu)
 - [Kernel Flasher](https://github.com/fatalcoder524/KernelFlasher)
-- [Releases](https://github.com/Bouteillepleine/SukiSu_Ultra_Oneplus-/releases)
+- [Releases](https://github.com/Bouteillepleine/Kowx712_Oneplus-/releases)
 
 ## 💝 Donations
 
@@ -85,7 +85,7 @@ Any and all donations are appreciated!
 
 Thanks to:
 
-- SukiSU
+- KOWX712
 - susfs4ksu by simonpunk
 - AnyKernel3 by osm0sis and contributors
 - WildKernels

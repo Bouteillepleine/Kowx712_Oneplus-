@@ -2,7 +2,7 @@ name: Build and Release OnePlus Kernels
 
 run-name: >-
   ${{ github.event.inputs.op_target_model != '' && github.event.inputs.op_target_model || github.event.inputs.op_model }}
-  • SUKISU
+  • KOWX712
   • ${{ github.event.inputs.build_timestamp != '' && github.event.inputs.build_timestamp || 'auto timestamp' }}
 
 permissions:
@@ -46,10 +46,10 @@ on:
         type: string
         default: ''
       ksu_options:
-        description: 'Enter SukiSU build json'
+        description: 'Enter KernelSU build json (KOWX712 fork). The "ksu" hash is pinned (not "master") so the SUSFS manual-hook enable patch stays valid; bump it together with a re-rebased 32441 patch.'
         required: true
         type: string
-        default: '[{"type":"SUKISU","hash":"main"}]'
+        default: '[{"type":"KSU","hash":"60e7841b5ce1d0dc5aafd4d4898cd5dccacb270f"}]'
       optimize_level:
         description: "Compiler optimization level"
         required: true
@@ -141,7 +141,7 @@ jobs:
           input="${{ github.event.inputs.op_model }}"
           target_model="${{ github.event.inputs.op_target_model }}"
           ksu_options_raw='${{ github.event.inputs.ksu_options }}'
-          if ! ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then .hash = "v4.1.3" else . end else error("No type found") end)' 2>&1); then
+          if ! ksu_options_normalized=$(echo "$ksu_options_raw" | jq -c 'map(if .type then .type |= ascii_upcase | if .hash == null then .hash = "60e7841b5ce1d0dc5aafd4d4898cd5dccacb270f" else . end else error("No type found") end)' 2>&1); then
             echo "::error::ksu_options validation failed: $ksu_options_normalized"
             exit 1
           fi
@@ -248,8 +248,8 @@ jobs:
           ksu_type=$(echo "$ksu_options_normalized" | jq -r '.[0].type')
           ksu_ref=$(echo "$ksu_options_normalized" | jq -r '.[0].hash')
           
-          KSU_REPO_OWNER="SukiSU-Ultra"
-          KSU_REPO_NAME="SukiSU-Ultra"
+          KSU_REPO_OWNER="KOWX712"
+          KSU_REPO_NAME="KernelSU"
           
           HEAD_REF="refs/heads/${ksu_ref}"
           TAG_REF="refs/tags/${ksu_ref}"
@@ -634,7 +634,7 @@ jobs:
       # upstream toolchain download on cache-miss for small builds, while the full
       # matrix still requires the toolchain-cache mirror (avoids 143x upstream hammer).
       OP_TOTAL_DEVICES: ${{ needs.set-op-model.outputs.device_count }}
-      # SUSFS uname spoofing toggle, consumed by configs/apply_susfs_patches.sh.
+      # SUSFS uname spoofing toggle, consumed by the KOWX712 SUSFS step.
       OP_SPOOF_UNAME: ${{ inputs.spoof_uname }}
     steps:
       - name: 📥 Checkout Code
@@ -776,7 +776,7 @@ jobs:
             echo ""
             echo "Outputs:"
             echo "  - Kernel: ${{ steps.build.outputs.kernel_version }}"
-            echo "  - SukiSU: v${{ steps.build.outputs.ksu_version }}"
+            echo "  - KOWX712: v${{ steps.build.outputs.ksu_version }}"
             echo "ksun_ver=" >> "$GITHUB_OUTPUT"
             echo "ksu_ver=${{ steps.build.outputs.ksu_version }}" >> "$GITHUB_OUTPUT"
             if [ "${{ matrix.susfs }}" = true ]; then
@@ -823,7 +823,7 @@ jobs:
           | **Kernel** | ${{ steps.build.outputs.kernel_version }} |
           EOF
             cat >> $GITHUB_STEP_SUMMARY << EOF
-          | **SukiSU** | v${{ steps.build.outputs.ksu_version }} |
+          | **KOWX712** | v${{ steps.build.outputs.ksu_version }} |
           EOF
             
             if [ "${{ matrix.susfs }}" = true ]; then
@@ -930,7 +930,7 @@ jobs:
       REPO_NAME: ${{ github.event.repository.name }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       SUSFS_BASE_VERSION: ${{ needs.set-op-model.outputs.susfs_base_version }}
-      RELEASE_NAME: '*TEST BUILD* OnePlus Kernels With SukiSU & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }} *TEST BUILD*'
+      RELEASE_NAME: '*TEST BUILD* OnePlus Kernels With KOWX712 & SUSFS ${{ needs.set-op-model.outputs.susfs_base_version }} *TEST BUILD*'
     steps:
       - name: 📥 Checkout code
         uses: actions/checkout@v6
@@ -998,7 +998,7 @@ jobs:
             echo "- Flashing the wrong ZIP may cause bootloop."
             echo "- Back up your current boot/init_boot/vendor_boot before flashing."
             echo "- Use Kernel Flasher or another trusted flashing method."
-            echo "- If switching from Magisk, APatch, KernelSU, SukiSU, or another fork, clean old root leftovers carefully."
+            echo "- If switching from Magisk, APatch, KernelSU, KOWX712, or another fork, clean old root leftovers carefully."
             echo ""
             echo "## Quick Guide"
             echo ""
@@ -1007,7 +1007,7 @@ jobs:
             echo "| **Device** | \`OP12\`, \`OP13r\`, \`OP-NORD-4\` |"
             echo "| **OS Version** | \`A16\`, \`A15\`, \`A14\` |"
             echo "| **Kernel Base** | \`android15-6.6.30\`, \`android14-6.1.75\` |"
-            echo "| **Root Type** | \`SUKISU\` |"
+            echo "| **Root Type** | \`KSU\` |"
             echo ""
           } > 00_DOWNLOADS.md
 
@@ -1122,7 +1122,7 @@ jobs:
             <<< "${{ needs.set-op-model.outputs.active_gki_keys }}"
           
           cat << EOF > release_notes.md
-          # 🎯 OnePlus Kernels with SukiSU & SUSFS $SUSFS_BASE_VERSION
+          # 🎯 OnePlus Kernels with KOWX712 & SUSFS $SUSFS_BASE_VERSION
           
           > **Build Date:** $(date -u '+%Y-%m-%d %H:%M:%S UTC')  
           > **Build ID:** \`${{ github.run_id }}\`  
@@ -1246,8 +1246,8 @@ jobs:
           
           ksu_display=$(ksu_display_value "$ksu_ref" "$ksu_resolved_hash")
           cat << EOF >> release_notes.md
-          | **SukiSU Branch** | \`$ksu_display\` |
-          | **SukiSU Version** | \`$ksu_ver_global\` |
+          | **KernelSU Branch** | \`$ksu_display\` |
+          | **KernelSU Version** | \`$ksu_ver_global\` |
           EOF
           cat << EOF >> release_notes.md
           | **SUSFS Version** | \`$SUSFS_BASE_VERSION\` |
@@ -1270,7 +1270,7 @@ jobs:
           ### 🔐 Root Management
           EOF
           cat << EOF >> release_notes.md
-          - **SukiSU** - Kernel-level root solution
+          - **KOWX712** - Kernel-level root solution
           EOF
           cat << EOF >> release_notes.md
           - **SUSFS $SUSFS_BASE_VERSION** - Advanced hiding and security features
@@ -1320,8 +1320,8 @@ jobs:
           ### Official Manager
           EOF
           cat << EOF >> release_notes.md
-          - **SukiSU Manager** *(install the version matching the kernel — see \`SukiSU Version\` in Build Configuration above)*
-            → [GitHub Release](https://github.com/SukiSU-Ultra/SukiSU-Ultra/releases)
+          - **KOWX712 Manager** *(install the version matching the kernel — see \`KernelSU Version\` in Build Configuration above)*
+            → [GitHub Release](https://github.com/KOWX712/KernelSU/releases)
           EOF
           cat << EOF >> release_notes.md
           ### Community Managers
@@ -1353,8 +1353,8 @@ jobs:
               c. **KSU GKI**: if you are 100% sure you already flashed stock init_boot/boot/vendor_boot, no action is needed; otherwise, follow the same steps as KSU LKM.
               d. **APatch**: remove /data/adb contents to avoid leftover root conflicts **after flashing the AnyKernel3 ZIP**.
           3. Flash the ZIP to the active slot using Kernel Flasher.
-          4. Install the SukiSU Manager APK, same version as mentioned in the AnyKernel3 ZIP name.
-          5. Open the SukiSU app.
+          4. Install the KOWX712 Manager APK, same version as mentioned in the AnyKernel3 ZIP name.
+          5. Open the KOWX712 app.
           6. Reboot the device if you performed any cleanup in step 2.
           
           ---
@@ -1383,7 +1383,7 @@ jobs:
           
           ## 🙏 Credits
           
-          - **SukiSU Team** - Root solution
+          - **KOWX712 · backslashxx** - Root solution
           - **simonpunk** - SUSFS development
           - **OnePlus** - Kernel source code
           - **Community Contributors** - Testing and feedback

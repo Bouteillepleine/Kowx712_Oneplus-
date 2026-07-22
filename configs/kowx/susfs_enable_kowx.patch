@@ -103,19 +103,65 @@ index 09b290a9..2df42e1b 100644
      return 0;
  }
 diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
-index 5bb59bfe..daa536d2 100644
+index 5bb59bfe..f72ae32e 100644
 --- a/kernel/feature/selinux_hide.c
 +++ b/kernel/feature/selinux_hide.c
-@@ -242,7 +242,8 @@ call_orig:
+@@ -30,8 +30,8 @@
+ #include "hook/lsm_hook.h"
+ 
+ static DEFINE_MUTEX(selinux_hide_mutex);
+-static bool ksu_selinux_hide_enabled __read_mostly = false;
+-static bool ksu_selinux_hide_running __read_mostly = false;
++bool ksu_selinux_hide_enabled __read_mostly = false;
++bool ksu_selinux_hide_running __read_mostly = false;
+ 
+ enum sel_inos {
+     SEL_ROOT_INO = 2,
+@@ -74,7 +74,7 @@ static void (*context_struct_compute_av_fn)(struct policydb *policydb, struct co
+                                             struct context *tcontext, u16 tclass, struct av_decision *avd,
+                                             struct extended_perms *xperms) = NULL;
+ #else
+-static struct selinux_state fake_state;
++struct selinux_state fake_state;
+ #endif
+ 
+ static write_op_fn *context_write, *access_write;
+@@ -242,10 +242,11 @@ call_orig:
      return ((setprocattr_fn)selinux_setprocattr_hook.original)(name, value, size);
  }
  
 -static DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
+-static struct page *fake_status = NULL;
 +// global: referenced (extern) by the 50_add_susfs selinux avc spoofing hook
 +DEFINE_STATIC_KEY_FALSE(fake_status_initialize_key);
- static struct page *fake_status = NULL;
++struct page *fake_status = NULL;
  
- static void initialize_fake_status()
+-static void initialize_fake_status()
++void initialize_fake_status()
+ {
+     mutex_lock(&selinux_state.status_lock);
+     if (fake_status)
+diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
+index 2b61c2be..aa8e44ea 100644
+--- a/kernel/feature/sucompat.c
++++ b/kernel/feature/sucompat.c
+@@ -301,3 +301,16 @@ void __exit ksu_sucompat_exit()
+ {
+     ksu_unregister_feature_handler(KSU_FEATURE_SU_COMPAT);
+ }
++#ifdef CONFIG_KSU_SUSFS
++// Adapter stubs: 50_add_susfs inserts kernel-side manual hooks (fs/exec.c, fs/open.c,
++// fs/stat.c, fs/read_write.c) that call these. KOWX keeps its native tracepoint
++// dispatcher for su-handling and marks umounted procs via the setuid hook, so these
++// are no-ops purely to satisfy the linker (susfs core hiding is VFS-level in fs/susfs.c).
++int ksu_handle_execveat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }
++int ksu_handle_execveat_sucompat(int *fd, struct filename **filename_ptr, void *argv, void *envp, int *flags) { return 0; }
++int ksu_handle_faccessat(int *dfd, const char __user **filename_user, int *mode, int *flags) { return 0; }
++int ksu_handle_stat(int *dfd, struct filename **filename, int *flags) { return 0; }
++void ksu_handle_sys_read(unsigned int fd) { }
++void ksu_handle_vfs_fstat(int fd, loff_t *kstat_size_ptr) { }
++#endif
++
 diff --git a/kernel/hook/setuid_hook.c b/kernel/hook/setuid_hook.c
 index d3f3ac49..02256d0b 100644
 --- a/kernel/hook/setuid_hook.c
@@ -140,6 +186,46 @@ index d3f3ac49..02256d0b 100644
  
      return 0;
  }
+diff --git a/kernel/selinux/selinux.c b/kernel/selinux/selinux.c
+index 7bc6d6d0..c6c6db64 100644
+--- a/kernel/selinux/selinux.c
++++ b/kernel/selinux/selinux.c
+@@ -22,6 +22,12 @@ static u32 cached_su_sid __read_mostly = 0;
+ static u32 cached_zygote_sid __read_mostly = 0;
+ static u32 cached_init_sid __read_mostly = 0;
+ u32 ksu_file_sid __read_mostly = 0;
++#ifdef CONFIG_KSU_SUSFS
++// Exposed for susfs (50_add_susfs selinux hooks). susfs_ksu_sid mirrors the KSU domain
++// SID (populated in cache_sid); susfs_priv_app_sid is unused by KOWX (kept 0).
++u32 susfs_ksu_sid __read_mostly = 0;
++u32 susfs_priv_app_sid __read_mostly = 0;
++#endif
+ 
+ static int transive_to_domain(const char *domain, struct cred *cred, bool clear_exec_sid)
+ {
+@@ -125,6 +131,9 @@ void cache_sid(void)
+     } else {
+         pr_info("Cached su SID: %u\n", cached_su_sid);
+     }
++#ifdef CONFIG_KSU_SUSFS
++    susfs_ksu_sid = cached_su_sid;
++#endif
+ 
+     err = security_secctx_to_secid(ZYGOTE_CONTEXT, strlen(ZYGOTE_CONTEXT), &cached_zygote_sid);
+     if (err) {
+@@ -220,3 +229,12 @@ void escape_to_root_for_adb_root(void)
+     }
+     commit_creds(cred);
+ }
++
++#ifdef CONFIG_KSU_SUSFS
++// susfs asks whether the current task runs in the KSU SELinux domain so it can exempt
++// ksu itself from hiding. Reuse KOWX's cached su SID matcher.
++bool susfs_is_current_ksu_domain(void)
++{
++    return is_sid_match(current_cred(), cached_su_sid, KERNEL_SU_CONTEXT);
++}
++#endif
 diff --git a/kernel/supercall/supercall.c b/kernel/supercall/supercall.c
 index dddb9128..aaee357b 100644
 --- a/kernel/supercall/supercall.c

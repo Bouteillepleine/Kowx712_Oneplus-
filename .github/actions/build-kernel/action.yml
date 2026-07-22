@@ -995,6 +995,18 @@ runs:
           sed -i 's#^KSU_VERSION_FULL :=.*#KSU_VERSION_FULL := v$(VERSION_TAG)-@KOWX712#' "$KERNEL_PLATFORM_FOLDER/KernelSU/kernel/Kbuild" || true
         fi
 
+        # 6.12/6.13 GKI changed kbuild $(src) semantics, so KOWX's own -I$(KSU_KERNEL_DIR)
+        # includes stop resolving for the symlinked drivers/kernelsu (e.g. init.o fails to
+        # find "uapi/app_profile.h"). Make the KSU include roots absolute and add the uapi
+        # root. Only needed on 6.12 (other versions resolve $(src) fine).
+        if [ "${{ env.KERNEL_VER }}" = "6.12" ] && [ -f "$KERNEL_PLATFORM_FOLDER/KernelSU/kernel/Kbuild" ]; then
+          KB="$KERNEL_PLATFORM_FOLDER/KernelSU/kernel/Kbuild"
+          sed -i 's|ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include|ccflags-y += -I$(KSU_KERNEL_DIR) -I$(KSU_KERNEL_DIR)/include -I$(KSU_KERNEL_DIR)/include/uapi|' "$KB"
+          sed -i 's|$(srctree)/$(src)|$(abspath $(srctree)/$(src))|g' "$KB"
+          sed -i 's|:= $(src)$|:= $(abspath $(src))|g' "$KB"
+          echo "Applied 6.12 KSU include-path fix to Kbuild"
+        fi
+
         {
           echo "KSU_COMMIT_SHA=$KSU_COMMIT_SHA"
           echo "KSUVER=$KSU_VERSION"

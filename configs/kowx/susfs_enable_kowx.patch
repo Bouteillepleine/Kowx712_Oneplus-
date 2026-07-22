@@ -103,7 +103,7 @@ index 09b290a9..2df42e1b 100644
      return 0;
  }
 diff --git a/kernel/feature/selinux_hide.c b/kernel/feature/selinux_hide.c
-index 5bb59bfe..f72ae32e 100644
+index 5bb59bfe..299480fd 100644
 --- a/kernel/feature/selinux_hide.c
 +++ b/kernel/feature/selinux_hide.c
 @@ -30,8 +30,8 @@
@@ -117,6 +117,21 @@ index 5bb59bfe..f72ae32e 100644
  
  enum sel_inos {
      SEL_ROOT_INO = 2,
+@@ -62,11 +62,11 @@ typedef ssize_t (*write_op_fn)(struct file *, char *, size_t);
+ static write_op_fn *selinux_write_op;
+ 
+ #if LINUX_VERSION_CODE >= KERNEL_VERSION(6, 6, 0)
+-static int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext, u32 scontext_len,
++int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext, u32 scontext_len,
+                                                u32 *sid, u32 def_sid, gfp_t gfp_flags);
+-static int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
++int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
+                                                u32 *scontext_len);
+-static void security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
++void security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
+                                                  struct av_decision *avd);
+ static void (*security_dump_masked_av_fn)(struct policydb *policydb, struct context *scontext, struct context *tcontext,
+                                           u16 tclass, u32 permissions, const char *reason) = NULL;
 @@ -74,7 +74,7 @@ static void (*context_struct_compute_av_fn)(struct policydb *policydb, struct co
                                              struct context *tcontext, u16 tclass, struct av_decision *avd,
                                              struct extended_perms *xperms) = NULL;
@@ -141,6 +156,33 @@ index 5bb59bfe..f72ae32e 100644
  {
      mutex_lock(&selinux_state.status_lock);
      if (fake_status)
+@@ -605,7 +606,7 @@ out:
+     return rc;
+ }
+ 
+-static int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext, u32 scontext_len,
++int security_context_to_sid_with_policy(struct selinux_policy *policy, const char *scontext, u32 scontext_len,
+                                                u32 *sid, u32 def_sid, gfp_t gfp_flags)
+ {
+     struct policydb *policydb;
+@@ -712,7 +713,7 @@ static int sidtab_entry_to_string(struct policydb *p, struct sidtab *sidtab, str
+     return rc;
+ }
+ 
+-static int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
++int security_sid_to_context_with_policy(struct selinux_policy *policy, u32 sid, char **scontext,
+                                                u32 *scontext_len)
+ {
+     struct policydb *policydb;
+@@ -1085,7 +1086,7 @@ static void context_struct_compute_av(struct policydb *policydb, struct context
+     type_attribute_bounds_av(policydb, scontext, tcontext, tclass, avd);
+ }
+ 
+-static void __nocfi security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
++void __nocfi security_compute_av_user_with_policy(struct selinux_policy *policy, u32 ssid, u32 tsid, u16 tclass,
+                                                          struct av_decision *avd)
+ {
+     struct policydb *policydb;
 diff --git a/kernel/feature/sucompat.c b/kernel/feature/sucompat.c
 index 2b61c2be..aa8e44ea 100644
 --- a/kernel/feature/sucompat.c

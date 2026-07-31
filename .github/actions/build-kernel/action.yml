@@ -1142,6 +1142,38 @@ runs:
             echo "No deep-indented susfs VMA_PAD_START/__fold refs in task_mmu.c (nothing to neutralize)"
           fi
         fi
+
+        # --- SUSFS <-> set_nameidata() arity compat ---
+        # susfs's CONFIG_KSU_SUSFS_OPEN_REDIRECT hunks re-enter the lookup with
+        #     set_nameidata(nd, old_dfd, fake_filename, NULL);
+        # but that 4th parameter (const struct path *root) only arrived in v5.14, so on
+        # android12-5.10 (still 3-arg) every hunk applies clean and the build then dies at
+        #     fs/namei.c: error: too many arguments to function call, expected 3, have 4
+        # susfs's own patch proves it knows the arity -- its SUS_PATH hunk edits the body of
+        # the 3-arg declaration -- the call sites were just copy-pasted from newer branches.
+        # Key off the arity the tree actually declares rather than the kernel version, so this
+        # self-heals if susfs fixes it upstream or a tree backports the root param. The
+        # declaration is one line up to 5.13 and wraps across two from 5.14, so collect it up
+        # to the closing paren before counting commas. Idempotent; a no-op on 4-arg trees.
+        __NAMEI="$COMMON_KERNEL_FOLDER/fs/namei.c"
+        if [ -f "$__NAMEI" ] && grep -q 'set_nameidata(nd, old_dfd, fake_filename, NULL)' "$__NAMEI"; then
+          __nd_decl="$(awk '/void[ \t]+set_nameidata[ \t]*\(/{f=1} f{printf "%s ", $0; if (/\)/) exit}' "$__NAMEI")"
+          # 2 commas = 3 params (<= 5.13), 3 commas = 4 params (>= 5.14)
+          __nd_commas="$(printf '%s' "$__nd_decl" | tr -cd ',' | wc -c)"
+          if [ -z "$__nd_decl" ]; then
+            echo "::error::susfs added 4-arg set_nameidata() calls but no set_nameidata() declaration was found in fs/namei.c"
+            exit 1
+          elif [ "$__nd_commas" -eq 2 ]; then
+            sed -i 's/set_nameidata(nd, old_dfd, fake_filename, NULL)/set_nameidata(nd, old_dfd, fake_filename)/g' "$__NAMEI"
+            if grep -q 'set_nameidata(nd, old_dfd, fake_filename, NULL)' "$__NAMEI"; then
+              echo "::error::Failed to drop the root argument from susfs's set_nameidata() calls in fs/namei.c"
+              exit 1
+            fi
+            echo "Dropped susfs's 5.14+ root argument from set_nameidata() OPEN_REDIRECT calls (tree declares the 3-arg form)"
+          else
+            echo "fs/namei.c declares the 4-arg set_nameidata(); leaving susfs OPEN_REDIRECT calls as-is"
+          fi
+        fi
         # --------------------------------------------------------------------------------
 
         # 3) KOWX712 KSU-side additive integration (tracepoint-native)
